@@ -26,10 +26,10 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import com.github.castorm.kafka.connect.http.auth.spi.HttpAuthenticator;
+import com.github.castorm.kafka.connect.http.client.okhttp.OkHttpClient;
 
 import org.apache.kafka.connect.errors.RetriableException;
 
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
@@ -70,7 +70,7 @@ public class TokenAuthenticator implements HttpAuthenticator {
         String tokenBody = config.getTokenBody().value();
         RequestBody requestBody = RequestBody.create(tokenBody, MediaType.parse("application/json; charset=utf-8"));
 
-        OkHttpClient httpClient = new OkHttpClient();
+        okhttp3.OkHttpClient httpClient = OkHttpClient.getUnsafeOkHttpClient().build();
         Request request = new Request.Builder().url(config.getTokenUrl()).post(requestBody).build();
         Response response = null;
         String result = "";
