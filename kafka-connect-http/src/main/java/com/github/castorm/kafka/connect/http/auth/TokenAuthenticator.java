@@ -55,7 +55,7 @@ public class TokenAuthenticator implements HttpAuthenticator {
         } catch (Exception e) {
             throw new RetriableException("Error: " + e.getMessage(), e);
         }
-        if (response.isBlank()) {
+        if (response == null || response.isEmpty()) {
             throw new RetriableException("Error: Access token is empty.");
         }
         return Optional.of("Bearer " + response);
