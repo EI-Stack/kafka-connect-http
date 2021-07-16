@@ -35,18 +35,11 @@ import okhttp3.Response;
 import okhttp3.logging.HttpLoggingInterceptor;
 
 import java.io.IOException;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.*;
 
 import static java.util.Optional.empty;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -70,21 +63,19 @@ public class OkHttpClient implements HttpClient {
         OkHttpClientConfig config = new OkHttpClientConfig(configs);
 
         authenticator = config.getAuthenticator();
-        client = new okhttp3.OkHttpClient.Builder()
-                .connectionPool(new ConnectionPool(config.getMaxIdleConnections(), config.getKeepAliveDuration(), MILLISECONDS))
+        client = getUnsafeOkHttpClient()
+                .connectionPool(
+                        new ConnectionPool(config.getMaxIdleConnections(), config.getKeepAliveDuration(), MILLISECONDS))
                 .connectTimeout(config.getConnectionTimeoutMillis(), MILLISECONDS)
-                .readTimeout(config.getReadTimeoutMillis(), MILLISECONDS)
-                .retryOnConnectionFailure(true)
+                .readTimeout(config.getReadTimeoutMillis(), MILLISECONDS).retryOnConnectionFailure(true)
                 .addInterceptor(createLoggingInterceptor())
                 .addInterceptor(chain -> chain.proceed(authorize(chain.request())))
-                .authenticator((route, response) -> authorize(response.request()))
-                .build();
+                .authenticator((route, response) -> authorize(response.request())).build();
     }
 
     private Request authorize(Request request) {
         return authenticator.getAuthorizationHeader()
-                .map(header -> request.newBuilder().header(AUTHORIZATION, header).build())
-                .orElse(request);
+                .map(header -> request.newBuilder().header(AUTHORIZATION, header).build()).orElse(request);
     }
 
     private static HttpLoggingInterceptor createLoggingInterceptor() {
@@ -167,40 +158,13 @@ public class OkHttpClient implements HttpClient {
     }
 
     public static okhttp3.OkHttpClient.Builder getUnsafeOkHttpClient() {
-        // https://stackoverflow.com/questions/50961123/how-to-ignore-ssl-error-in-okhttp/50961201
+        // https://blog.csdn.net/wcy18818429914/article/details/107691896
         try {
-            // Create a trust manager that does not validate certificate chains
-            final TrustManager[] trustAllCerts = new TrustManager[] { new X509TrustManager() {
-                @Override
-                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType)
-                        throws CertificateException {
-                }
-
-                @Override
-                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType)
-                        throws CertificateException {
-                }
-
-                @Override
-                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-            } };
-
-            // Install the all-trusting trust manager
-            final SSLContext sslContext = SSLContext.getInstance("SSL");
-            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
-            // Create an ssl socket factory with our all-trusting manager
-            final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+            X509TrustManager manager = SSLSocketClientUtil.getX509TrustManager();
 
             return new okhttp3.OkHttpClient.Builder()
-                    .sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0])
-                    .hostnameVerifier(new HostnameVerifier() {
-                        @Override
-                        public boolean verify(String hostname, SSLSession session) {
-                            return true;
-                        }
-                    });
+                    .sslSocketFactory(SSLSocketClientUtil.getSocketFactory(manager), manager)
+                    .hostnameVerifier(SSLSocketClientUtil.getHostnameVerifier());
 
         } catch (Exception e) {
             throw new RuntimeException(e);
